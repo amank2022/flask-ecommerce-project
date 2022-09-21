@@ -15,12 +15,18 @@ class RegistrationForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
     shopuser = BooleanField('Shop User')
+    shop_name = StringField('Shop Name(If you are a Shop User)')
     submit = SubmitField('Sign Up')
 
     def validate_email(self, email):
         user = User.query.filter_by(email=email.data).first()
         if user:
             raise ValidationError('Email already registered.')
+
+    def validate_shop_name(self, shop_name):
+        if self.shopuser.data and not shop_name.data:
+            raise ValidationError('Shop Name is required.')
+
 
 
 class LoginForm(FlaskForm):
@@ -39,9 +45,10 @@ class UpdateAccountForm(FlaskForm):
 
     def validate_email(self, email):
         if email.data != current_user.email:
-            user = User.query.filter_by(email=email.data).first()
-            if user:
-                raise ValidationError('Email already registered.')
+            if current_user.user_type != 'admin':
+                user = User.query.filter_by(email=email.data).first()
+                if user:
+                    raise ValidationError('Email already registered.')
 
 
 class RequestResetForm(FlaskForm):

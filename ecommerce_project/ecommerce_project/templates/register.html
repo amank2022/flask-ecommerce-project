@@ -96,11 +96,24 @@
                         {{ form.confirm_password(class="form-control form-control-lg") }}
                     {% endif %}
                 </div>
+                
+                <div class="form-group">
+                    {{ form.shop_name.label(class="form-control-label") }}
+                    {% if form.shop_name.errors %}
+                        {{ form.shop_name(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.shop_name.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.shop_name(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
                 <div class="form-check">
                     {{ form.shopuser(class="form-check-input") }}
                     {{ form.shopuser.label(class="form-check-label") }}
                 </div>
-
             </fieldset>
 
             <div class="form-group">

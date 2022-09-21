@@ -1,13 +1,22 @@
 from flask import render_template, flash, redirect, url_for, request
 from ecommerce_project import app, db, bcrypt, mail
 from ecommerce_project.forms import LoginForm, RegistrationForm, UpdateAccountForm, RequestResetForm, ResetPasswordForm
-from ecommerce_project.models import User
+from ecommerce_project.models import User, Shop, Product, Wishlist, Cart, Order, OrderDetail
 from flask_login import login_user, logout_user, current_user, login_required
 from flask_mail import Message
+from . import admin_views, shop_views
+import datetime
+
 
 @app.route('/')
 def home():
-    return render_template('home.html')
+    if current_user.is_authenticated and current_user.user_type == 'admin':
+        return redirect(url_for('admin_dashboard'))
+    elif current_user.is_authenticated and current_user.user_type == 'shopuser':
+        return redirect(url_for('shop_dashboard'))
+    
+    products = Product.query.all()
+    return render_template('home.html', products=products)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -18,12 +27,22 @@ def register():
         hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
         if form.shopuser.data:
             user_type = 'shopuser'
+            admin_views.send_approval_request()
         else:
             user_type = 'customer'
         user = User(fullname=form.fullname.data, dob=form.dob.data, email=form.email.data, gender=form.gender.data, 
                         address=form.address.data, password=hashed_password, user_type=user_type)
         db.session.add(user)
         db.session.commit()
+
+        if form.shopuser.data:
+            user = User.query.filter_by(email=form.email.data).first()
+            print(user)
+            shop = Shop(name=form.shop_name.data, is_active=False, user_id=user.id)
+            db.session.add(shop)
+            db.session.commit()
+
+        
         flash(f'Your account has been created!', 'success')
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
@@ -36,12 +55,15 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data).first()
-        if user and bcrypt.check_password_hash(user.password, form.password.data):
-            login_user(user)
-            next_page = request.args.get('next')
-            # print(next_page)
-            return redirect(next_page) if next_page else redirect(url_for('home'))
-            # flash("Login Succesful.", "success") # remove this when home page is defined.
+        
+        if user:
+            shop = Shop.query.filter_by(user_id=user.id).first()
+            if user.user_type == 'shopuser' and not shop.is_active:
+                flash('Your account is not active yet. Please contact admin.', 'danger')
+            elif bcrypt.check_password_hash(user.password, form.password.data):
+                login_user(user)
+                next_page = request.args.get('next')
+                return redirect(next_page) if next_page else redirect(url_for('home'))
         else:
             flash('Login Unsuccesful. Please check your email and password.', 'danger')
     return render_template('login.html', title='Login', form=form)
@@ -97,7 +119,6 @@ def reset_request():
 
     form = RequestResetForm()
     if form.validate_on_submit():
-        print('Why you are inside post request')
         user = User.query.filter_by(email=form.email.data).first()
         send_reset_email(user)
         flash('An email has been sent with instructions to reset your password.', 'info')
@@ -124,3 +145,132 @@ def reset_token(token):
         flash(f'Your password has been updated!', 'success')
         return redirect(url_for('login'))
     return render_template('reset_token.html', title='Reset Password', form=form)
+
+
+# Wishlist functionality
+@app.route('/wishlist')
+@login_required
+def wishlist():
+    if current_user.is_authenticated:
+        wishlist = Wishlist.query.filter_by(user_id=current_user.id)
+        return render_template('wishlist.html', title='Wishlist', wishlist=wishlist)
+    return redirect(url_for('home'))
+
+@app.route('/add-to-wishlist/<int:id>', methods=['GET', 'POST'])
+@login_required
+def add_to_wishlist(id):
+    if current_user.is_authenticated and current_user.user_type == 'customer':
+        wishlist_item = Wishlist.query.filter_by(user_id=current_user.id, product_id=id).first()
+        
+        if not wishlist_item:
+            print('-------nhi hai----------')
+            new_item = Wishlist(user_id=current_user.id, product_id=id)
+            db.session.add(new_item)
+            db.session.commit()            
+
+    return redirect(url_for('home'))
+
+
+@app.route('/remove-from-wishlist/<int:id>', methods=['GET', 'POST'])
+@login_required
+def remove_from_wishlist(id):
+    if current_user.is_authenticated and current_user.user_type == 'customer':
+        item = Wishlist.query.filter_by(user_id=current_user.id, product_id=id).first()
+        db.session.delete(item)
+        db.session.commit()          
+        return redirect(url_for('wishlist'))
+
+    return redirect(url_for('home'))
+
+
+# Cart funtionality
+@app.route('/cart')
+@login_required
+def cart():
+    if current_user.is_authenticated:
+        cart = Cart.query.filter_by(user_id=current_user.id)
+        return render_template('cart.html', title='Cart', cart=cart)
+    return redirect(url_for('home'))
+
+
+@app.route('/add-to-cart/<int:id>', methods=['GET', 'POST'])
+@login_required
+def add_to_cart(id):
+    if current_user.is_authenticated and current_user.user_type == 'customer':
+        # check stock of product
+        cart_item = Cart.query.filter_by(user_id=current_user.id, product_id=id).first()
+        if cart_item:
+            print("Quantity updated")
+            cart_item.quantity = cart_item.quantity + 1
+        else:
+            new_item = Cart(user_id=current_user.id, product_id=id, quantity=1)
+            db.session.add(new_item)
+            print("Item added to cart")
+        db.session.commit()           
+
+    return redirect(url_for('home'))
+
+
+@app.route('/remove-from-cart/<int:id>', methods=['GET', 'POST'])
+@login_required
+def remove_from_cart(id):
+    if current_user.is_authenticated and current_user.user_type == 'customer':
+        item = Cart.query.filter_by(user_id=current_user.id, product_id=id).first()
+        db.session.delete(item)
+        db.session.commit()          
+        return redirect(url_for('cart'))
+
+    return redirect(url_for('home'))
+
+
+# Order functionality
+@app.route('/order')
+@login_required
+def order():
+    if current_user.is_authenticated and (current_user.user_type == 'customer' or current_user.user_type == 'admin'):
+        orders = Order.query.filter_by(user_id=current_user.id)
+        return render_template('order.html', title='My Orders', orders=orders, user_id=current_user.id)
+
+    return redirect(url_for('home'))
+
+
+@app.route('/<int:user_id>/order-details/<int:id>')
+@login_required
+def order_detail(user_id, id):
+    if current_user.is_authenticated and (current_user.id == user_id or current_user.user_type == 'admin'):
+        order = Order.query.filter_by(user_id=user_id, id=id).first()
+        if order:
+            order_details = OrderDetail.query.filter_by(order_id=id)
+            return render_template('shop/order_details.html', title='Order Details', order_details=order_details)
+        
+        return redirect(url_for('order'))
+
+    return redirect(url_for('home'))
+
+
+@app.route('/buy-now', methods=['GET', 'POST'])
+@login_required
+def buy_now():
+    if current_user.is_authenticated and current_user.user_type == 'customer':
+        order = Order(user_id=current_user.id, status='pending', date_completed=datetime.datetime.utcnow())
+        db.session.add(order)
+        db.session.commit()
+
+        cart = Cart.query.filter_by(user_id=current_user.id)
+        order = Order.query.filter_by(user_id=current_user.id, status="pending").first()
+        data = []
+        for cart_item in cart:
+            order_detail_entry = OrderDetail(order_id=order.id, product_id=cart_item.product_id, quantity=cart_item.quantity)
+            data.append(order_detail_entry)
+            product = Product.query.get(cart_item.product_id)
+            product.sold_quantity += cart_item.quantity
+            product.quantity -= cart_item.quantity
+            db.session.delete(cart_item)
+
+        db.session.add_all(data)
+        order.status = "completed"
+        
+        db.session.commit()
+        flash('Your order is placed successfully!', 'success')
+    return redirect(url_for('home'))
+
