@@ -1,0 +1,15 @@
+version: '3'
+
+
+services:
+  web:
+    build: .
+    ports:
+      - '5000:5000'
+
+    environment:
+      - EMAIL_USER=akushwaha@deqode.com
+      # - EMAIL_PASS=
+
+    # command: bash -c "python3 -m flask --app run run --host=0.0.0.0"
+    command: bash -c "gunicorn --bind 0.0.0.0:5000 -w 3 run:app"

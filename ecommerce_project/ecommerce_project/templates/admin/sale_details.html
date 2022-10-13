@@ -27,7 +27,11 @@
             <td>{{ shop.name }}</td>
             <td>{{ shop.total_sold }}</td>
             <td>{{ shop.total_sold + shop.total_stock }}</td>
-            <td>{{ (shop.total_sold / (shop.total_sold + shop.total_stock)*100)|round }} %</td>
+            {% if (shop.total_sold + shop.total_stock) != 0 %}
+              <td>{{ (shop.total_sold / (shop.total_sold + shop.total_stock)*100)|round }} %</td>
+            {% else %}
+              <td>{{ 0 }}</td>
+            {% endif %}
             <td>
                 <a href="{{url_for('admin_shop_sales', id=shop.id)}}"><button type="button" class="btn btn-dark">Details</button></a>
             </td>

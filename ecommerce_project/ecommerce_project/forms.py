@@ -24,7 +24,9 @@ class RegistrationForm(FlaskForm):
             raise ValidationError('Email already registered.')
 
     def validate_shop_name(self, shop_name):
+        #breakpoint()
         if self.shopuser.data and not shop_name.data:
+            
             raise ValidationError('Shop Name is required.')
 
 

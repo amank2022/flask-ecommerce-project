@@ -37,8 +37,10 @@ def shop_requests():
 def approve_request(id):
     if current_user.is_authenticated and current_user.user_type == 'admin':
         shop = Shop.query.get(id)
-        shop.is_active = True
-        db.session.commit()
+        if shop:
+            shop.is_active = True
+            db.session.commit()
+        return redirect(url_for('shop_requests'))
     return redirect(url_for('home'))
 
 
@@ -47,10 +49,12 @@ def approve_request(id):
 def reject_request(id):
     if current_user.is_authenticated and current_user.user_type == 'admin':
         shop = Shop.query.get(id)
-        user = User.query.get(shop.user_id)
-        db.session.delete(user)
-        db.session.delete(shop)
-        db.session.commit()
+        if shop:
+            user = User.query.get(shop.user_id)
+            db.session.delete(user)
+            db.session.delete(shop)
+            db.session.commit()
+        return redirect(url_for('shop_requests'))
     return redirect(url_for('home'))
 
 #---------------------------------
